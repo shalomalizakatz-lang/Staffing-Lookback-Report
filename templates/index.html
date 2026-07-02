@@ -431,16 +431,20 @@
 
     <!-- Invoice upload -->
     <div class="card" style="margin-bottom:14px;">
-      <div class="invoice-panel">
-        <div style="flex:1; min-width:200px;">
-          <div class="inv-label">Agency Invoices</div>
-          <div class="inv-desc">Upload PDFs to auto-fill agency hours below</div>
-        </div>
-        <label class="btn btn-ghost" style="cursor:pointer; font-size:12px; padding:7px 16px;">
-          + Add Invoice PDFs
+      <div style="padding:16px 18px 0;">
+        <div class="inv-label">Agency Invoices</div>
+        <div class="inv-desc" style="margin-top:2px;">Upload PDFs to auto-fill agency hours — supports all 6 agencies</div>
+      </div>
+      <div style="padding:12px 18px 16px;">
+        <div class="drop-zone" id="invoice-drop-zone" style="padding:28px 24px;">
+          <div class="icon" style="font-size:28px;">📎</div>
+          <div class="label"><strong>Click to browse</strong> or drag & drop invoices</div>
+          <div class="hint">PDF files · multiple allowed</div>
           <input type="file" id="invoice-input" accept=".pdf" multiple style="display:none" onchange="uploadInvoices(this.files)" />
-        </label>
-        <span id="invoice-status" style="font-size:12px; color:var(--text-3); align-self:center;"></span>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:6px; min-height:20px;">
+          <span id="invoice-status" style="font-size:12px; color:var(--text-3);"></span>
+        </div>
       </div>
       <div class="invoice-results" id="invoice-results"></div>
     </div>
@@ -667,6 +671,17 @@
     }
     btn.disabled = false; btn.innerHTML = 'Generate & Download Report ↓';
   }
+
+  // ── Invoice drop zone ──
+  const invDropZone = document.getElementById('invoice-drop-zone');
+  const invInput    = document.getElementById('invoice-input');
+  invDropZone.addEventListener('click', () => invInput.click());
+  invDropZone.addEventListener('dragover', e => { e.preventDefault(); invDropZone.classList.add('drag-over'); });
+  invDropZone.addEventListener('dragleave', () => invDropZone.classList.remove('drag-over'));
+  invDropZone.addEventListener('drop', e => {
+    e.preventDefault(); invDropZone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) uploadInvoices(e.dataTransfer.files);
+  });
 
   // ── Invoice parsing ──
   async function uploadInvoices(files) {
