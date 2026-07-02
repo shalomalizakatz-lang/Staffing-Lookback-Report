@@ -402,6 +402,9 @@ def _parse_format_e(pages: list[str]) -> tuple[dict, str, list]:
                 continue
 
             pos = _pos_from_description(job_desc)
+            # "OT" alone means Occupational Therapist — not a tracked position, skip silently
+            if not pos and re.fullmatch(r'OT', job_desc.strip(), re.I):
+                continue
             if pos:
                 results[week_key][pos]['total'] += hours
                 if is_ot:
