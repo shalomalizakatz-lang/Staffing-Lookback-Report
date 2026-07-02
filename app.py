@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime
 from flask import Flask, request, render_template, send_file, session, jsonify, redirect, url_for
 from generate_staffing_report import extract_from_pivot_cache, build_staffing_report
+from parse_invoice import parse_invoice_pdf, match_to_payroll_weeks
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'highland-staffing-2026')
@@ -79,6 +80,45 @@ def upload():
     return jsonify({
         'weeks': weeks,
         'month_label': month_label,
+    })
+
+
+@app.route('/parse-invoice', methods=['POST'])
+def parse_invoice():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    f = request.files['file']
+    if not f.filename.lower().endswith('.pdf'):
+        return jsonify({'error': 'Please upload a PDF file'}), 400
+
+    weeks = session.get('weeks')
+    if not weeks:
+        return jsonify({'error': 'Session expired — please re-upload the lookback file first'}), 400
+
+    upload_id = str(uuid.uuid4())
+    pdf_path = os.path.join(UPLOAD_FOLDER, f'{upload_id}_invoice.pdf')
+    f.save(pdf_path)
+
+    try:
+        invoice_data, agency_name, err = parse_invoice_pdf(pdf_path)
+    finally:
+        try:
+            os.remove(pdf_path)
+        except OSError:
+            pass
+
+    if err:
+        return jsonify({'error': f'Could not parse invoice: {err}'}), 400
+    if not invoice_data:
+        return jsonify({'error': 'No line items found in this invoice'}), 400
+
+    payroll_dates = [w['date'] for w in weeks]
+    mapped = match_to_payroll_weeks(invoice_data, payroll_dates)
+
+    return jsonify({
+        'agency_name': agency_name,
+        'data': mapped,
     })
 
 
