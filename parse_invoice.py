@@ -519,14 +519,13 @@ def _sadelite_dept_to_pos(dept_code: str) -> str | None:
     return None  # non-clinical dept (housekeeping, dietary, etc.) — skip
 
 
+_SADELITE_SUBTOTAL_RE = re.compile(r'^Sub\s+Total\s*\(|^Report\s+Total', re.I)
+
 def _parse_format_g(pages: list[str]) -> tuple[dict, str]:
     results = defaultdict(lambda: defaultdict(lambda: {'total': 0.0, 'ot': 0.0}))
     all_lines = [l for page in pages for l in _clean_lines(page)]
 
-    # Agency name from first page header (before payroll register body)
-    agency_name = _agency_name_from_lines(_clean_lines(pages[0]))
-    if not agency_name:
-        agency_name = 'Sadelite Agency MS Inc.'
+    agency_name = 'Sadelite Agency MS Inc.'
 
     # Find pay period (first occurrence covers the whole document)
     week_key = None
@@ -545,7 +544,12 @@ def _parse_format_g(pages: list[str]) -> tuple[dict, str]:
 
     current_pos = None
     for line in all_lines:
-        # Department section header
+        # Sub Total or Report Total blocks duplicate data — stop counting
+        if _SADELITE_SUBTOTAL_RE.match(line):
+            current_pos = None
+            continue
+
+        # Department section header — sets position for rows that follow
         dm = _SADELITE_DEPT_RE.search(line)
         if dm:
             current_pos = _sadelite_dept_to_pos(dm.group(1))
@@ -554,7 +558,7 @@ def _parse_format_g(pages: list[str]) -> tuple[dict, str]:
         if current_pos is None:
             continue
 
-        # Pay-type row
+        # Pay-type row: "Regular 16.50 ..." / "HOL OT 07.50 ..." / "SK 07.50 ..."
         pm = _SADELITE_PAYROW_RE.match(line)
         if pm:
             pay_type = pm.group(1).upper().replace(' ', '')
