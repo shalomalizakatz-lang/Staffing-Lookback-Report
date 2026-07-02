@@ -687,8 +687,14 @@
         }
 
         applyInvoiceData(data.agency_name, data.data);
-        resultsEl.innerHTML += `<div class="alert alert-info" style="margin-top:8px;">
-          ✅ <strong>${escHtml(data.agency_name)}</strong> — applied to matching weeks</div>`;
+        let msg = `✅ <strong>${escHtml(data.agency_name)}</strong> — applied to matching weeks`;
+        if (data.unresolved && data.unresolved.length > 0) {
+          const items = data.unresolved.map(u =>
+            `${u.hours}h (${u.description || 'no position'}) week of ${u.week}`
+          ).join('; ');
+          msg += `<br><span style="color:#7a4800">⚠️ Could not auto-assign position for: ${escHtml(items)} — please fill in manually</span>`;
+        }
+        resultsEl.innerHTML += `<div class="alert alert-info" style="margin-top:8px;">${msg}</div>`;
       } catch(e) {
         resultsEl.innerHTML += `<div class="alert alert-error" style="margin-top:8px;">
           ⚠️ ${escHtml(file.name)}: Parse failed</div>`;

@@ -101,7 +101,7 @@ def parse_invoice():
     f.save(pdf_path)
 
     try:
-        invoice_data, agency_name, err = parse_invoice_pdf(pdf_path)
+        invoice_data, agency_name, err, unresolved = parse_invoice_pdf(pdf_path)
     finally:
         try:
             os.remove(pdf_path)
@@ -119,6 +119,7 @@ def parse_invoice():
     return jsonify({
         'agency_name': agency_name,
         'data': mapped,
+        'unresolved': unresolved or [],
     })
 
 
