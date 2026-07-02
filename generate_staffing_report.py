@@ -256,6 +256,7 @@ def build_staffing_report(payroll_data: dict, agency_data: dict,
     """
     wb = Workbook()
     wb.remove(wb.active)  # remove default sheet
+    wb.calculation.calcMode = 'auto'  # force Excel to recalculate all formulas on open
 
     _build_staffing_sheet(wb, payroll_data, agency_data, weeks, census_map)
     _build_agency_log(wb, weeks)
@@ -405,7 +406,7 @@ def _build_staffing_sheet(wb, payroll_data, agency_data, weeks, census_map):
 
             # D: OT %
             c = ws.cell(row=row, column=4,
-                        value=f'={ot_ref}/{total_ref}' if b_val else 0)
+                        value=f'=IF({total_ref}=0,0,{ot_ref}/{total_ref})' if b_val else 0)
             c.font = make_font(size=11)
             c.fill = make_fill(row_bg)
             c.alignment = center()
