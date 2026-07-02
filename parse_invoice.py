@@ -564,6 +564,52 @@ def _parse_format_g(pages: list[str]) -> tuple[dict, str]:
     return results, agency_name
 
 
+# ─── Format H: Empro Staffing ────────────────────────────────────────────────
+# Single-page invoice. PDF extraction scrambles columns but each employee row contains:
+#   rate  FirstName LastName  regHrs  POS  empCode  MM/DD/YY  ShiftDesc  amount
+# Invoice date (= service date) in header: "Date: M/D/YY"
+# Detection: "emprostaffing.com"
+
+_EMPRO_DETECT_RE = re.compile(r'emprostaffing\.com', re.I)
+_EMPRO_DATE_RE   = re.compile(r'Date:\s*(\d{1,2}/\d{1,2}/\d{2,4})', re.I)
+_EMPRO_ROW_RE    = re.compile(
+    r'[\d,]+\.?\d*\s+'                         # rate (leading — skip)
+    r'[A-Z][a-z]+\s+[A-Z][a-z]+\s+'           # First Last name
+    r'([\d.]+)\s+'                              # reg hrs
+    r'(CNA|LPN|RN|HHA)\s+'                     # position
+    r'\S+\s+'                                   # employee code
+    r'(\d{1,2}/\d{1,2}/\d{2,4})\s+'           # service date
+    r'\w+\s+'                                   # shift description
+    r'[\d,]+\.?\d*\s*$',                        # amount
+    re.I
+)
+
+def _parse_format_h(pages: list[str]) -> tuple[dict, str]:
+    results = defaultdict(lambda: defaultdict(lambda: {'total': 0.0, 'ot': 0.0}))
+    all_lines = [l for page in pages for l in _clean_lines(page)]
+    agency_name = 'Empro Staffing'
+
+    for line in all_lines:
+        m = _EMPRO_ROW_RE.search(line)
+        if not m:
+            continue
+        hours = _to_float(m.group(1))
+        pos   = m.group(2).upper()
+        date_str = m.group(3)
+        # Service date may be YY or YYYY
+        for fmt in ('%m/%d/%Y', '%m/%d/%y'):
+            try:
+                dt = datetime.strptime(date_str, fmt)
+                week_start = _week_start_from_date(dt)
+                week_key   = week_start.strftime('%Y-%m-%d')
+                results[week_key][pos]['total'] += hours
+                break
+            except ValueError:
+                continue
+
+    return results, agency_name
+
+
 # ─── Format detection ─────────────────────────────────────────────────────────
 
 def _detect_format(pages: list[str]) -> str:
@@ -582,6 +628,8 @@ def _detect_format(pages: list[str]) -> str:
         return 'F'
     if _SADELITE_DETECT_RE.search(all_text):
         return 'G'
+    if _EMPRO_DETECT_RE.search(all_text):
+        return 'H'
     return 'UNKNOWN'
 
 
@@ -627,11 +675,13 @@ def parse_invoice_pdf(pdf_path: str):
             data, name = _parse_format_f(pages)
         elif fmt == 'G':
             data, name = _parse_format_g(pages)
+        elif fmt == 'H':
+            data, name = _parse_format_h(pages)
         else:
             return None, None, (
                 'Invoice format not recognized. Supported formats: Ageless Skye, '
                 'Bayan Global, County Staffing, per-shift, week-range, Meridian, '
-                'and Sadelite payroll register invoices.'
+                'Sadelite, and Empro Staffing invoices.'
             ), []
         name = name or _FORMAT_FALLBACK_NAMES.get(fmt, 'Unknown Agency')
     except Exception as e:

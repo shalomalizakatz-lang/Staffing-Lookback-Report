@@ -1,0 +1,23 @@
+{
+  "name": "Highland Staffing Report",
+  "short_name": "Staffing",
+  "description": "Highland Care Center monthly staffing report tool",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#00796B",
+  "theme_color": "#00796B",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
