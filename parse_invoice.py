@@ -428,11 +428,13 @@ def _parse_format_e(pages: list[str]) -> tuple[dict, str, list]:
 # Row:    "MM/DD/YYYY   Name   POSITION shift-desc   hours   $rate   $amount"
 
 _MERIDIAN_HEADER_RE = re.compile(r'Date\s+Worked\s+Service\s+Type', re.I)
-_MERIDIAN_ROW_RE    = re.compile(
+
+_MERIDIAN_ROW_RE = re.compile(
     r'(\d{1,2}/\d{1,2}/\d{4})\s+'       # date
     r'.+?\s+'                              # name (lazy)
-    r'(CNA|LPN|RN|HHA)\b'                # position
-    r'.+?'                                # shift desc (lazy)
+    r'(CNA|LPN|RN|HHA)'                  # position
+    r'(\s+\([^)]*\))?\s+'                # optional modifier e.g. (OT), (HOL)
+    r'[\w/-]+\s+'                         # shift descriptor e.g. 3-11, 11-7
     r'([\d.]+)\s+'                        # hours
     r'\$[\d,]+\.?\d*\s+'                  # rate
     r'\$[\d,]+\.?\d*\s*$',               # amount
@@ -441,13 +443,13 @@ _MERIDIAN_ROW_RE    = re.compile(
 
 def _parse_format_f(pages: list[str]) -> tuple[dict, str]:
     results = defaultdict(lambda: defaultdict(lambda: {'total': 0.0, 'ot': 0.0}))
-    all_lines = []
-    for text in pages:
-        all_lines.extend(_clean_lines(text))
+    # Only use page 1 for invoice line items — later pages are timecard detail
+    invoice_pages = pages[:1]
+    all_lines = [l for page in pages for l in _clean_lines(page)]
     agency_name = _agency_name_from_lines(all_lines)
 
     in_items = False
-    for line in all_lines:
+    for line in _clean_lines(invoice_pages[0]):
         if _MERIDIAN_HEADER_RE.search(line):
             in_items = True
             continue
@@ -458,7 +460,9 @@ def _parse_format_f(pages: list[str]) -> tuple[dict, str]:
             continue
         date_str = m.group(1)
         pos      = m.group(2).upper()
-        hours    = _to_float(m.group(3))
+        modifier = (m.group(3) or '').strip()   # e.g. "(OT)" or "(HOL)"
+        hours    = _to_float(m.group(4))
+        is_ot    = bool(re.search(r'\bOT\b', modifier, re.I))
         try:
             dt = datetime.strptime(date_str, '%m/%d/%Y')
             week_start = _week_start_from_date(dt)
@@ -466,6 +470,8 @@ def _parse_format_f(pages: list[str]) -> tuple[dict, str]:
         except ValueError:
             continue
         results[week_key][pos]['total'] += hours
+        if is_ot:
+            results[week_key][pos]['ot'] += hours
 
     return results, agency_name
 
