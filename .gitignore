@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+*.xlsx
+!Highland_Staffing_June_2026.xlsx
