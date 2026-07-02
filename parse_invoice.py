@@ -94,7 +94,7 @@ def _agency_name_from_lines(lines: list[str]) -> str:
     for c in candidates[:5]:
         if len(c) > 8:
             return c
-    return 'Unknown Agency'
+    return None  # caller will apply format-based fallback
 
 def _week_start_from_date(dt: datetime) -> datetime:
     """Return Sunday of the week containing dt."""
@@ -508,6 +508,10 @@ def parse_invoice_pdf(pdf_path: str):
 
     unresolved = []
     try:
+        _FORMAT_FALLBACK_NAMES = {
+            'D': 'Advanced Medical Staffing',
+            'E': 'ProMed Staffing Resources',
+        }
         if fmt == 'A':
             data, name = _parse_format_a(pages)
         elif fmt == 'B':
@@ -525,6 +529,7 @@ def parse_invoice_pdf(pdf_path: str):
                 'Invoice format not recognized. Supported formats: Ageless Skye, '
                 'Bayan Global, County Staffing, per-shift, and week-range invoices.'
             ), []
+        name = name or _FORMAT_FALLBACK_NAMES.get(fmt, 'Unknown Agency')
     except Exception as e:
         return None, None, f'Parse error ({fmt}): {e}', []
 
