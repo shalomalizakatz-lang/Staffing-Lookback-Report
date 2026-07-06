@@ -440,9 +440,31 @@
     <div class="card" style="margin-bottom:14px;">
       <div style="padding:16px 18px 0;">
         <div class="inv-label">Agency Invoices</div>
-        <div class="inv-desc" style="margin-top:2px;">Upload PDFs to auto-fill agency hours — supports all 6 agencies</div>
+        <div class="inv-desc" style="margin-top:2px;">Upload PDFs to auto-fill agency hours — supports all agencies</div>
       </div>
       <div style="padding:12px 18px 16px;">
+
+        <!-- OneDrive fetch button (shown only when configured) -->
+        <div id="onedrive-section" style="display:none; margin-bottom:12px;">
+          <button class="btn" id="onedrive-btn" onclick="fetchFromOneDrive()"
+            style="width:100%; background:var(--teal); color:#fff; border:none; padding:10px 16px;
+                   border-radius:8px; font-size:13px; font-weight:600; cursor:pointer;
+                   display:flex; align-items:center; justify-content:center; gap:8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>
+            </svg>
+            Fetch from OneDrive Folder
+          </button>
+          <div id="onedrive-status" style="font-size:12px; color:var(--text-3); margin-top:5px; text-align:center;"></div>
+          <!-- File list from OneDrive -->
+          <div id="onedrive-file-list" style="margin-top:8px;"></div>
+          <div style="display:flex; align-items:center; gap:8px; margin:10px 0 2px;">
+            <div style="flex:1; height:1px; background:var(--border);"></div>
+            <span style="font-size:11px; color:var(--text-3); white-space:nowrap;">or upload manually</span>
+            <div style="flex:1; height:1px; background:var(--border);"></div>
+          </div>
+        </div>
+
         <div class="drop-zone" id="invoice-drop-zone" style="padding:28px 24px;">
           <div class="icon" style="font-size:28px;">📎</div>
           <div class="label"><strong>Click to browse</strong> or drag & drop invoices</div>
@@ -770,6 +792,86 @@
   function clearError() { document.getElementById('error-area').innerHTML = ''; }
   function esc(s) {
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+</script>
+<script>
+  // ── OneDrive integration ──
+  (async () => {
+    try {
+      const res = await fetch('/onedrive-status');
+      const data = await res.json();
+      if (data.configured) {
+        document.getElementById('onedrive-section').style.display = 'block';
+      }
+    } catch(e) { /* silently skip if endpoint unavailable */ }
+  })();
+
+  async function fetchFromOneDrive() {
+    const btn      = document.getElementById('onedrive-btn');
+    const statusEl = document.getElementById('onedrive-status');
+    const listEl   = document.getElementById('onedrive-file-list');
+    const resultsEl = document.getElementById('invoice-results');
+
+    btn.disabled = true;
+    btn.textContent = 'Fetching…';
+    statusEl.textContent = '';
+    listEl.innerHTML = '';
+
+    try {
+      const res = await fetch('/fetch-onedrive', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        statusEl.textContent = '⚠️ ' + data.error;
+        btn.disabled = false; btn.textContent = 'Fetch from OneDrive Folder';
+        return;
+      }
+      if (!data.files || !data.files.length) {
+        statusEl.textContent = 'No PDF files found in the configured folder.';
+        btn.disabled = false; btn.textContent = 'Fetch from OneDrive Folder';
+        return;
+      }
+
+      statusEl.textContent = `Found ${data.files.length} PDF${data.files.length > 1 ? 's' : ''} — click to parse each one.`;
+      listEl.innerHTML = data.files.map(f => `
+        <div id="od-row-${esc(f.id)}" style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:13px;">
+          <button class="btn" style="padding:4px 12px;font-size:12px;" onclick="parseOneDriveFile('${esc(f.id)}', this)">Parse</button>
+          <span style="color:var(--text);">${esc(f.name)}</span>
+          <span style="color:var(--text-3);font-size:11px;">${(f.size/1024).toFixed(0)} KB</span>
+        </div>`).join('');
+    } catch(e) {
+      statusEl.textContent = '⚠️ Network error — please try again.';
+    }
+    btn.disabled = false; btn.textContent = 'Fetch from OneDrive Folder';
+  }
+
+  async function parseOneDriveFile(itemId, btn) {
+    const resultsEl = document.getElementById('invoice-results');
+    btn.disabled = true; btn.textContent = '…';
+
+    try {
+      const res = await fetch('/parse-onedrive-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: itemId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        resultsEl.innerHTML += `<div class="alert alert-error" style="margin:6px 0;">⚠️ ${esc(data.error)}</div>`;
+        btn.disabled = false; btn.textContent = 'Parse';
+        return;
+      }
+      applyInvoiceData(data.data);
+      let msg = `✅ <strong>${esc(data.agency_name)}</strong> — hours applied to matching weeks`;
+      if (data.unresolved && data.unresolved.length) {
+        const items = data.unresolved.map(u => `${u.hours}h (${u.description}) wk ${u.week}`).join('; ');
+        msg += `<br>⚠️ Could not assign position for: ${esc(items)} — fill in manually`;
+      }
+      resultsEl.innerHTML += `<div class="alert alert-info" style="margin:6px 0;">${msg}</div>`;
+      btn.textContent = '✓'; btn.style.background = 'var(--green)';
+    } catch(e) {
+      resultsEl.innerHTML += `<div class="alert alert-error" style="margin:6px 0;">⚠️ Parse failed for this file.</div>`;
+      btn.disabled = false; btn.textContent = 'Parse';
+    }
   }
 </script>
 <script>
