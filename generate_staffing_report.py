@@ -404,16 +404,20 @@ def _build_staffing_sheet(wb, payroll_data, agency_data, weeks, census_map):
             c.number_format = '#,##0.00'
             ot_ref = c.coordinate
 
-            # D: OT %
-            c = ws.cell(row=row, column=4,
-                        value=f'=IF({total_ref}=0,0,{ot_ref}/{total_ref})' if b_val else 0)
+            # D: OT % — blank for HHA (agency-only, no payroll denominator)
+            if pos == 'HHA' or not b_val:
+                ot_pct_val = None
+            else:
+                ot_pct_val = f'=IF({total_ref}=0,"",{ot_ref}/{total_ref})'
+            c = ws.cell(row=row, column=4, value=ot_pct_val)
             c.font = make_font(size=11)
             c.fill = make_fill(row_bg)
             c.alignment = center()
             c.border = BORDER_THIN
-            c.number_format = '0.0%'
+            if ot_pct_val:
+                c.number_format = '0.0%'
 
-            # E: Agency Hours (manual input)
+            # E: Agency Hours (manual input — yellow if empty)
             a_val = round(a_data['total'], 2) if a_data.get('total') else None
             c = ws.cell(row=row, column=5, value=a_val)
             c.font = make_font(size=11)
@@ -423,7 +427,7 @@ def _build_staffing_sheet(wb, payroll_data, agency_data, weeks, census_map):
             c.number_format = '#,##0.00'
             agency_ref = c.coordinate
 
-            # F: Agency OT (manual input)
+            # F: Agency OT (manual input — yellow if empty)
             ao_val = round(a_data['ot'], 2) if a_data.get('ot') else None
             c = ws.cell(row=row, column=6, value=ao_val)
             c.font = make_font(size=11)
@@ -433,32 +437,36 @@ def _build_staffing_sheet(wb, payroll_data, agency_data, weeks, census_map):
             c.number_format = '#,##0.00'
             agency_ot_ref = c.coordinate
 
-            # G: Agency % of total
-            if pos == 'HHA':
-                c = ws.cell(row=row, column=7, value='-')
+            # G: Agency % of payroll total (blank for HHA — no payroll denominator)
+            if pos == 'HHA' or not b_val:
+                agency_pct_val = None
             else:
-                c = ws.cell(row=row, column=7,
-                    value=f'=IF({total_ref}=0,0,{agency_ref}/{total_ref})' if b_val else 0)
+                agency_pct_val = f'=IF({agency_ref}="","",IF({total_ref}=0,"",{agency_ref}/{total_ref}))'
+            c = ws.cell(row=row, column=7, value=agency_pct_val)
+            if agency_pct_val:
                 c.number_format = '0.0%'
             c.font = make_font(size=11)
             c.fill = make_fill(row_bg)
             c.alignment = center()
             c.border = BORDER_THIN
 
-            # H: Agency OT %
-            c = ws.cell(row=row, column=8,
-                value=f'=IF({agency_ref}=0,0,{agency_ot_ref}/{agency_ref})'
-                       if (a_val or ao_val) else 0)
+            # H: Agency OT % — blank until agency hours are entered
+            if a_val or ao_val:
+                agt_ot_val = f'=IF({agency_ref}=0,"",{agency_ot_ref}/{agency_ref})'
+            else:
+                agt_ot_val = None
+            c = ws.cell(row=row, column=8, value=agt_ot_val)
             c.font = make_font(size=11)
             c.fill = make_fill(row_bg)
             c.alignment = center()
             c.border = BORDER_THIN
-            c.number_format = '0.0%'
+            if agt_ot_val:
+                c.number_format = '0.0%'
 
-            # I: HPPD
+            # I: HPPD — blank until census is entered
             combined = f'({total_ref}+IF(ISNUMBER({agency_ref}),{agency_ref},0))'
             c = ws.cell(row=row, column=9,
-                value=f'=IF({census_ref}=0,0,{combined}/{census_ref})')
+                value=f'=IF({census_ref}="","",{combined}/{census_ref})')
             c.font = make_font(size=11)
             c.fill = make_fill(row_bg)
             c.alignment = center()
@@ -494,7 +502,7 @@ def _build_staffing_sheet(wb, payroll_data, agency_data, weeks, census_map):
                 c.number_format = '#,##0.00'
                 ot_total_ref = c.coordinate
             elif col == 4:  # OT %
-                c.value = f'=IF({total_total_ref}=0,0,{ot_total_ref}/{total_total_ref})'
+                c.value = f'=IF({total_total_ref}=0,"",{ot_total_ref}/{total_total_ref})'
                 c.number_format = '0.0%'
             elif col == 5:  # Agency total
                 c.value = f'=SUM({col_letter}{first_pos_row}:{col_letter}{last_pos_row})'
@@ -505,15 +513,14 @@ def _build_staffing_sheet(wb, payroll_data, agency_data, weeks, census_map):
                 c.number_format = '#,##0.00'
                 agency_ot_total_ref = c.coordinate
             elif col == 7:  # Agency %
-                c.value = f'=IF({total_total_ref}=0,0,{agency_total_ref}/{total_total_ref})'
+                c.value = f'=IF({agency_total_ref}=0,"",IF({total_total_ref}=0,"",{agency_total_ref}/{total_total_ref}))'
                 c.number_format = '0.0%'
             elif col == 8:  # Agency OT %
-                c.value = (f'=IF({agency_total_ref}=0,0,'
-                           f'{agency_ot_total_ref}/{agency_total_ref})')
+                c.value = f'=IF({agency_total_ref}=0,"",IF({agency_ot_total_ref}=0,"",{agency_ot_total_ref}/{agency_total_ref}))'
                 c.number_format = '0.0%'
             elif col == 9:  # HPPD total
                 combined = f'({total_total_ref}+IF(ISNUMBER({agency_total_ref}),{agency_total_ref},0))'
-                c.value = f'=IF({census_ref}=0,0,{combined}/{census_ref})'
+                c.value = f'=IF({census_ref}="","",{combined}/{census_ref})'
                 c.number_format = '0.000'
 
             c.font = make_font(bold=True, size=11)
