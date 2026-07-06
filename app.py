@@ -11,6 +11,7 @@ from datetime import datetime
 from flask import Flask, request, render_template, send_file, session, jsonify, redirect, url_for
 from generate_staffing_report import extract_from_pivot_cache, build_staffing_report
 from parse_invoice import parse_invoice_pdf, match_to_payroll_weeks
+from onedrive import list_invoice_pdfs, download_pdf, _is_configured as onedrive_configured
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'highland-staffing-2026')
@@ -175,6 +176,68 @@ def generate():
 
     download_name = f'Highland_Staffing_{month}.xlsx'
     return send_file(output_path, as_attachment=True, download_name=download_name)
+
+
+@app.route('/onedrive-status')
+def onedrive_status():
+    """Tell the UI whether OneDrive is configured."""
+    return jsonify({'configured': onedrive_configured()})
+
+
+@app.route('/fetch-onedrive', methods=['POST'])
+def fetch_onedrive():
+    """List PDFs in the configured OneDrive folder."""
+    weeks = session.get('weeks')
+    if not weeks:
+        return jsonify({'error': 'Session expired — please re-upload the lookback file first'}), 400
+
+    try:
+        files = list_invoice_pdfs()
+    except RuntimeError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': f'OneDrive error: {e}'}), 500
+
+    return jsonify({'files': files})
+
+
+@app.route('/parse-onedrive-file', methods=['POST'])
+def parse_onedrive_file():
+    """Download a specific OneDrive PDF by item ID and parse it."""
+    weeks = session.get('weeks')
+    if not weeks:
+        return jsonify({'error': 'Session expired — please re-upload the lookback file first'}), 400
+
+    item_id = (request.get_json() or {}).get('item_id')
+    if not item_id:
+        return jsonify({'error': 'No item_id provided'}), 400
+
+    try:
+        pdf_path = download_pdf(item_id)
+    except Exception as e:
+        return jsonify({'error': f'Download failed: {e}'}), 500
+
+    try:
+        invoice_data, agency_name, err, unresolved = parse_invoice_pdf(pdf_path)
+    finally:
+        try:
+            os.remove(pdf_path)
+        except OSError:
+            pass
+
+    if err:
+        return jsonify({'error': f'Could not parse invoice: {err}'}), 400
+    if not invoice_data:
+        return jsonify({'error': 'No line items found in this invoice'}), 400
+
+    payroll_dates = [w['date'] for w in weeks]
+    mapped = match_to_payroll_weeks(invoice_data, payroll_dates)
+
+    return jsonify({
+        'agency_name': agency_name,
+        'data': mapped,
+        'unresolved': unresolved or [],
+    })
 
 
 def _to_float(val):
